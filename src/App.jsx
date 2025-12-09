@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Clipboard, Moon, Sun } from 'lucide-react';
+import { Clipboard, Moon, Sun, Loader2 } from 'lucide-react';
+import {supabase} from './supabaseClient'; // Import the database connection
 import { CHANNELS, INITIAL_AGENTS } from './data/constants';
 import AgentSelector from './components/AgentSelector';
 import DateRangePill from './components/DateRangePill';
@@ -10,42 +11,29 @@ import ActionModal from './components/ActionModal';
 
 export default function App() {
   // --- THEME STATE ---
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        return localStorage.getItem('theme') === 'dark' || 
-        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      }
-    } catch (e) { return false; }
-    return false;
-  });
-
+  const [darkMode, setDarkMode] = useState(false);
+  // (Simplified theme logic for brevity, you can keep your existing detailed logic)
   useEffect(() => {
-    if (darkMode) {
+    if (localStorage.getItem('theme') === 'dark') {
+      setDarkMode(true);
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    setDarkMode(!darkMode);
+    if (!darkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-  }, [darkMode]);
+  };
 
   // --- DATA STATE ---
-const [leads, setLeads] = useState(() => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const saved = localStorage.getItem('rentalTallyLeads');
-    // Check if 'saved' exists and is not the string "undefined"
-    if (saved && saved !== "undefined") {
-      return JSON.parse(saved);
-    }
-    return [];
-  } catch (e) {
-    console.error("Storage error:", e);
-    return [];
-  }
-});
-
+  const [leads, setLeads] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Loading state
   const [agents, setAgents] = useState(INITIAL_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState(INITIAL_AGENTS[0]);
   
@@ -60,17 +48,34 @@ const [leads, setLeads] = useState(() => {
   const [activeChannel, setActiveChannel] = useState(null); 
   const [toast, setToast] = useState(null);
 
-  // Persistence
- useEffect(() => {
-  if (leads && Array.isArray(leads)) {
-    localStorage.setItem('rentalTallyLeads', JSON.stringify(leads));
-  }
-}, [leads]);
+  // --- DATABASE: FETCH DATA ---
+  useEffect(() => {
+    fetchLeads();
+  }, []); // Run once when app loads
+
+  const fetchLeads = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: true }); // Get all leads
+      
+      if (error) throw error;
+      setLeads(data);
+    } catch (error) {
+      console.error('Error fetching leads:', error.message);
+      triggerToast('Error loading data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // --- FILTERING ---
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
       const matchesAgent = lead.agent === selectedAgent;
+      // Database returns YYYY-MM-DD so simple string comparison works
       const matchesDate = lead.timestamp >= dateRange.start && lead.timestamp <= dateRange.end;
       return matchesAgent && matchesDate;
     });
@@ -90,24 +95,65 @@ const [leads, setLeads] = useState(() => {
     };
   }, [filteredLeads, activeChannel]);
 
-  // --- HANDLERS ---
-  const handleLogLead = (status) => {
+  // --- HANDLERS (UPDATED FOR DB) ---
+  const handleLogLead = async (status) => {
+    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // Optimistic UI Update (Show it immediately before DB confirms)
+    const tempId = Date.now();
     const newLead = {
-      id: Date.now(),
+      id: tempId,
       agent: selectedAgent,
       channel: activeChannel.name,
       status: status,
       timestamp: getTodayString(),
-      timeLogged: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time_logged: timeNow
     };
+    
+    // Update local state immediately
     setLeads(prev => [...prev, newLead]);
     triggerToast(`${status} logged!`);
+
+    // Send to Supabase
+    const { data, error } = await supabase
+      .from('leads')
+      .insert([{
+        agent: selectedAgent,
+        channel: activeChannel.name,
+        status: status,
+        timestamp: getTodayString(),
+        time_logged: timeNow
+      }])
+      .select();
+
+    if (error) {
+      console.error('Error inserting:', error);
+      triggerToast('Failed to save to cloud!');
+      // Revert change if it failed
+      setLeads(prev => prev.filter(l => l.id !== tempId));
+    } else {
+      // Replace the temp local entry with the real DB entry (which has the real ID)
+      setLeads(prev => prev.map(l => l.id === tempId ? data[0] : l));
+    }
   };
 
-  const handleDeleteLead = (id) => {
-    if (window.confirm('Are you sure you want to delete this entry?')) {
+  const handleDeleteLead = async (id) => {
+    if (window.confirm('Delete this entry?')) {
+      // Update local state immediately
       setLeads(prev => prev.filter(l => l.id !== id));
       triggerToast('Entry deleted');
+
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting:', error);
+        triggerToast('Failed to delete from cloud');
+        fetchLeads(); // Reload data to sync up
+      }
     }
   };
 
@@ -146,13 +192,16 @@ ${CHANNELS.map(c => {
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight text-white">Rental Tally</h1>
-                <p className="text-xs text-white/80 font-medium uppercase tracking-widest">Inbound Tracker</p>
+                <p className="text-xs text-white/80 font-medium uppercase tracking-widest flex items-center gap-2">
+                  Inbound Tracker
+                  {isLoading && <Loader2 size={12} className="animate-spin" />}
+                </p>
               </div>
               <button onClick={handleCopyReport} className="ml-2 bg-white/10 p-2.5 rounded-xl hover:bg-white/20 text-white transition-all active:scale-95" title="Copy Report">
                 <Clipboard size={18} />
               </button>
             </div>
-            <button onClick={() => setDarkMode(!darkMode)} className="lg:hidden p-2 rounded-full bg-white/10 text-white hover:bg-white/20">
+            <button onClick={toggleTheme} className="lg:hidden p-2 rounded-full bg-white/10 text-white hover:bg-white/20">
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
           </div>
@@ -172,7 +221,7 @@ ${CHANNELS.map(c => {
                 onSelect={setSelectedAgent}
                 onAdd={(name) => { setAgents([...agents, name]); setSelectedAgent(name); }}
               />
-              <button onClick={() => setDarkMode(!darkMode)} className="hidden lg:block p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors">
+              <button onClick={toggleTheme} className="hidden lg:block p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors">
                 {darkMode ? <Sun size={18} /> : <Moon size={18} />}
               </button>
             </div>
@@ -197,7 +246,6 @@ ${CHANNELS.map(c => {
         />
       </div>
       
-      {/* MODAL & TOAST */}
       <ActionModal 
         activeChannel={activeChannel}
         stats={modalStats}
