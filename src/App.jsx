@@ -31,12 +31,20 @@ export default function App() {
   }, [darkMode]);
 
   // --- DATA STATE ---
-  const [leads, setLeads] = useState(() => {
-    try {
-      const saved = localStorage.getItem('rentalTallyLeads');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
+const [leads, setLeads] = useState(() => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = localStorage.getItem('rentalTallyLeads');
+    // Check if 'saved' exists and is not the string "undefined"
+    if (saved && saved !== "undefined") {
+      return JSON.parse(saved);
+    }
+    return [];
+  } catch (e) {
+    console.error("Storage error:", e);
+    return [];
+  }
+});
 
   const [agents, setAgents] = useState(INITIAL_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState(INITIAL_AGENTS[0]);
@@ -53,9 +61,11 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   // Persistence
-  useEffect(() => {
+ useEffect(() => {
+  if (leads && Array.isArray(leads)) {
     localStorage.setItem('rentalTallyLeads', JSON.stringify(leads));
-  }, [leads]);
+  }
+}, [leads]);
 
   // --- FILTERING ---
   const filteredLeads = useMemo(() => {
