@@ -99,7 +99,6 @@ const dashboardStats = {
     };
   }, [filteredLeads, activeChannel]);
 
-  // --- HANDLERS (UPDATED FOR DB) ---
 // --- HANDLERS ---
   const handleLogLead = async (status, amount = 0) => {
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
