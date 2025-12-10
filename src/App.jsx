@@ -81,9 +81,13 @@ export default function App() {
     });
   }, [leads, selectedAgent, dateRange]);
 
-  const dashboardStats = {
+const dashboardStats = {
     assigned: filteredLeads.filter(l => l.status === 'Assigned').length,
     converted: filteredLeads.filter(l => l.status === 'Converted').length,
+    // Add this sum logic:
+    revenue: filteredLeads
+      .filter(l => l.status === 'Converted')
+      .reduce((sum, lead) => sum + (lead.amount || 0), 0)
   };
 
   const modalStats = useMemo(() => {
@@ -96,31 +100,31 @@ export default function App() {
   }, [filteredLeads, activeChannel]);
 
   // --- HANDLERS (UPDATED FOR DB) ---
-  const handleLogLead = async (status) => {
+// --- HANDLERS ---
+  const handleLogLead = async (status, amount = 0) => {
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    // Optimistic UI Update (Show it immediately before DB confirms)
     const tempId = Date.now();
     const newLead = {
       id: tempId,
       agent: selectedAgent,
       channel: activeChannel.name,
       status: status,
+      amount: amount, // <--- Add this
       timestamp: getTodayString(),
       time_logged: timeNow
     };
     
-    // Update local state immediately
     setLeads(prev => [...prev, newLead]);
     triggerToast(`${status} logged!`);
 
-    // Send to Supabase
     const { data, error } = await supabase
       .from('leads')
       .insert([{
         agent: selectedAgent,
         channel: activeChannel.name,
         status: status,
+        amount: amount, // <--- Add this to DB payload
         timestamp: getTodayString(),
         time_logged: timeNow
       }])
@@ -129,10 +133,8 @@ export default function App() {
     if (error) {
       console.error('Error inserting:', error);
       triggerToast('Failed to save to cloud!');
-      // Revert change if it failed
       setLeads(prev => prev.filter(l => l.id !== tempId));
     } else {
-      // Replace the temp local entry with the real DB entry (which has the real ID)
       setLeads(prev => prev.map(l => l.id === tempId ? data[0] : l));
     }
   };
