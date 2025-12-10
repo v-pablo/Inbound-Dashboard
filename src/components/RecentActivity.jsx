@@ -28,9 +28,12 @@ export default function RecentActivity({ leads, onDelete }) {
                   <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                     {lead.agent} <span className="text-gray-400 font-normal">via</span> {lead.channel}
                   </span>
+                  
+                  {/* FIX IS HERE: Changed lead.timeLogged to lead.time_logged */}
                   <span className="text-xs text-gray-400 dark:text-slate-500 font-medium mt-0.5">
-                    Logged as {lead.status} • {lead.timeLogged || 'Just now'}
+                    Logged as {lead.status} • {lead.time_logged || 'Just now'}
                   </span>
+                  
                 </div>
               </div>
               <button 
