@@ -44,7 +44,7 @@ export const CHANNELS = [
   // --- NEW CARD HERE ---
   { 
     id: 'cx', 
-    name: 'CX Assigned', 
+    name: 'Customer Experience', 
     color: 'from-rose-500 to-red-600', 
     icon: Headphones, 
     shadow: 'shadow-rose-500/30' 
