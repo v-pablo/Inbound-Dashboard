@@ -52,7 +52,7 @@ export const CHANNELS = [
   // ---------------------
   { 
     id: 'admin', 
-    name: 'Admin/Walk-in', 
+    name: 'Admin', 
     color: 'from-purple-500 to-indigo-600', 
     icon: Users, 
     shadow: 'shadow-purple-500/30' 
