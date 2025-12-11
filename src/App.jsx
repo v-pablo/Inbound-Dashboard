@@ -81,13 +81,19 @@ export default function App() {
     });
   }, [leads, selectedAgent, dateRange]);
 
-const dashboardStats = {
-    assigned: filteredLeads.filter(l => l.status === 'Assigned').length,
-    converted: filteredLeads.filter(l => l.status === 'Converted').length,
-    // Add this sum logic:
+// Inside App.jsx
+
+  const assignedCount = filteredLeads.filter(l => l.status === 'Assigned').length;
+  const convertedCount = filteredLeads.filter(l => l.status === 'Converted').length;
+
+  const dashboardStats = {
+    assigned: assignedCount,
+    converted: convertedCount,
     revenue: filteredLeads
       .filter(l => l.status === 'Converted')
-      .reduce((sum, lead) => sum + (lead.amount || 0), 0)
+      .reduce((sum, lead) => sum + (lead.amount || 0), 0),
+    // NEW: Calculate Rate (rounded to nearest whole number)
+    rate: assignedCount === 0 ? 0 : Math.round((convertedCount / assignedCount) * 100)
   };
 
   const modalStats = useMemo(() => {
@@ -192,7 +198,7 @@ ${CHANNELS.map(c => {
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-4">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight text-white">Rental Tally</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-white">Rental Dasboard</h1>
                 <p className="text-xs text-white/80 font-medium uppercase tracking-widest flex items-center gap-2">
                   Inbound Tracker
                   {isLoading && <Loader2 size={12} className="animate-spin" />}
